@@ -110,13 +110,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func fitClockToMenuBar(refresh: Bool = false) {
         guard let button = status?.button, let face = menuFace, let natural = naturalClockImage else { return }
         var width = natural.size.width
-        if let window = button.window, let region = window.screen?.auxiliaryTopRightArea,
-           window.frame.maxX > region.minX, window.frame.maxX <= region.maxX + 1 {
-            // Control Center may park an item across the notch and hide the entire slot.
-            // Its trailing edge still tells us how much room precedes the next menu item.
-            let padding = max(0, window.frame.width - (button.image?.size.width ?? window.frame.width))
-            let available = floor(window.frame.maxX - region.minX - padding - 3)
-            width = max(MenuClockFace.iconWidth, min(width, available))
+        let screen = button.window?.screen ?? NSScreen.main ?? NSScreen.screens.first
+        if let region = screen?.auxiliaryTopRightArea {
+            // A hidden status window can have stale geometry until it fits beside the notch.
+            // Start with a compact face even before Control Center supplies a usable frame.
+            width = min(width, 78)
+            if let frame = button.window?.frame, frame.maxX > region.minX, frame.maxX <= region.maxX {
+                width = min(width, max(MenuClockFace.iconWidth, floor(frame.maxX - region.minX) - 22))
+            }
         }
         if refresh || button.image?.size.width != width {
             button.image = width == natural.size.width ? natural : face.image(maxWidth: width)

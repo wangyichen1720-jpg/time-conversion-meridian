@@ -15,7 +15,7 @@ struct MenuClockFace: Equatable {
         let font = NSFont.monospacedDigitSystemFont(ofSize: compact ? 10 : 12, weight: .medium)
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
         let rows = [chosen, detected].compactMap { $0 }.map { NSAttributedString(string: $0, attributes: attributes) }
-        let textX = Self.iconWidth + 4
+        let textX = Self.iconWidth + 3
         let width = ceil(rows.map { $0.size().width }.max() ?? 0)
         let height: CGFloat = 22
         let fittedWidth = max(Self.iconWidth, min(textX + width, floor(maxWidth)))
