@@ -9,6 +9,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var status: NSStatusItem!
     private let iconAnchor = NSView()
     private var menuFace: MenuClockFace?
+    private var naturalClockImage: NSImage?
+    private var layoutQueued = false
     private weak var statusDropTarget: DropTarget?
     private var minuteTimer: Timer?
     private var clockObservation: AnyCancellable?
@@ -95,7 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let face = MenuClockFace(chosen: chosen, detected: detected)
         if face != menuFace {
             menuFace = face
-            button.image = face.image
+            naturalClockImage = face.image()
+            fitClockToMenuBar(refresh: true)
             positionIconAnchor()
         }
         button.toolTip = description + "\nClick to convert a time, or drop a screenshot."
@@ -104,14 +107,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         statusDropTarget?.setAccessibilityLabel(description)
     }
 
+    private func fitClockToMenuBar(refresh: Bool = false) {
+        guard let button = status?.button, let face = menuFace, let natural = naturalClockImage else { return }
+        var width = natural.size.width
+        if let window = button.window, let region = window.screen?.auxiliaryTopRightArea,
+           window.frame.maxX > region.minX, window.frame.maxX <= region.maxX + 1 {
+            // Control Center may park an item across the notch and hide the entire slot.
+            // Its trailing edge still tells us how much room precedes the next menu item.
+            let padding = max(0, window.frame.width - (button.image?.size.width ?? window.frame.width))
+            let available = floor(window.frame.maxX - region.minX - padding - 3)
+            width = max(MenuClockFace.iconWidth, min(width, available))
+        }
+        if refresh || button.image?.size.width != width {
+            button.image = width == natural.size.width ? natural : face.image(maxWidth: width)
+        }
+    }
+
     @objc private func positionIconAnchor() {
         guard let button = status?.button, let image = button.image else { return }
         let left = max(button.bounds.minX, button.bounds.midX - image.size.width / 2)
         iconAnchor.frame = NSRect(x: left, y: button.bounds.minY,
                                   width: MenuClockFace.iconWidth, height: button.bounds.height)
-        // The menu bar moves the status window asynchronously when a clock row changes width.
-        if popover.isShown {
-            DispatchQueue.main.async { [weak self] in self?.alignOpenPanel() }
+        guard !layoutQueued else { return }
+        layoutQueued = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.layoutQueued = false
+            self.fitClockToMenuBar()
+            self.alignOpenPanel()
         }
     }
 

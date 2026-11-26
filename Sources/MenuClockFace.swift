@@ -10,7 +10,7 @@ struct MenuClockFace: Equatable {
         zoneName + "·" + Model.format(date, "MMM d HH:mm", zone)
     }
 
-    var image: NSImage {
+    func image(maxWidth: CGFloat = .greatestFiniteMagnitude) -> NSImage {
         let compact = detected != nil
         let font = NSFont.monospacedDigitSystemFont(ofSize: compact ? 10 : 12, weight: .medium)
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.black]
@@ -18,7 +18,9 @@ struct MenuClockFace: Equatable {
         let textX = Self.iconWidth + 4
         let width = ceil(rows.map { $0.size().width }.max() ?? 0)
         let height: CGFloat = 22
-        let result = NSImage(size: NSSize(width: textX + width, height: height), flipped: false) { _ in
+        let fittedWidth = max(Self.iconWidth, min(textX + width, floor(maxWidth)))
+        let textScale = max(0, min(1, (fittedWidth - textX) / max(width, 1)))
+        let result = NSImage(size: NSSize(width: fittedWidth, height: height), flipped: false) { _ in
             NSColor.black.setStroke()
             let ring = NSBezierPath(ovalIn: NSRect(x: 1, y: 4, width: 14, height: 14))
             ring.lineWidth = 1.6
@@ -37,9 +39,13 @@ struct MenuClockFace: Equatable {
                 let centerY = height - (CGFloat(index) + 0.5) * rowHeight
                 let baseline = centerY - font.capHeight / 2
                 let line = CTLineCreateWithAttributedString(row)
-                if let context = NSGraphicsContext.current?.cgContext {
-                    context.textPosition = CGPoint(x: textX, y: baseline)
+                if textScale > 0, let context = NSGraphicsContext.current?.cgContext {
+                    context.saveGState()
+                    context.translateBy(x: textX, y: baseline)
+                    context.scaleBy(x: textScale, y: 1)
+                    context.textPosition = .zero
                     CTLineDraw(line, context)
+                    context.restoreGState()
                 }
             }
             return true
