@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -6,21 +7,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let model = Model()
     private let popover = NSPopover()
     private var status: NSStatusItem!
+    private weak var statusDropTarget: DropTarget?
+    private var minuteTimer: Timer?
+    private var zoneObservation: AnyCancellable?
     private var keyMonitor: Any?
     private var chooser: NSOpenPanel?
     private var host: NSHostingController<Interface>!
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         installMenus()
-        status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = status.button else { return }
         let icon = NSImage(systemSymbolName:"clock.arrow.2.circlepath", accessibilityDescription:"Meridian time converter") ?? NSImage(systemSymbolName:"clock", accessibilityDescription:"Meridian")
         icon?.isTemplate = true
         button.image = icon
-        button.toolTip = "Meridian · Click to convert a time, or drop a screenshot"
+        button.imagePosition = .imageLeft
+        button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         button.target = self; button.action = #selector(toggle)
         let target = DropTarget(frame: button.bounds)
-        target.autoresizingMask = [.width,.height]; target.toolTip = button.toolTip
+        target.autoresizingMask = [.width,.height]
         target.setAccessibilityElement(true); target.setAccessibilityRole(.button); target.setAccessibilityLabel("Meridian time converter")
         target.clicked = { [weak self] in self?.toggle() }
         target.contextAction = { [weak self, weak target] in
@@ -39,6 +44,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         }
         target.hoverChanged = { [weak button] in button?.highlight($0) }
         button.addSubview(target)
+        statusDropTarget = target
+        startMenuClock()
+        zoneObservation = model.$destination.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] _ in
+            self?.updateMenuClock()
+        }
 
         host = NSHostingController(rootView:Interface(model:model))
         popover.contentViewController = host; popover.contentSize = Interface.size
@@ -54,12 +64,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             return e
         }
         NotificationCenter.default.addObserver(self, selector:#selector(clockChanged), name:.NSSystemTimeZoneDidChange, object:nil)
+        NotificationCenter.default.addObserver(self, selector:#selector(clockChanged), name:.NSSystemClockDidChange, object:nil)
         NotificationCenter.default.addObserver(self, selector:#selector(clockChanged), name:.NSCalendarDayChanged, object:nil)
         NSWorkspace.shared.notificationCenter.addObserver(self, selector:#selector(clockChanged), name:NSWorkspace.didWakeNotification, object:nil)
         DispatchQueue.main.async { self.show() }
     }
     func applicationShouldHandleReopen(_ sender:NSApplication, hasVisibleWindows flag:Bool) -> Bool { show(); return true }
-    @objc private func clockChanged() { model.recalculate() }
+    private func updateMenuClock(at date: Date = Date()) {
+        guard let button = status?.button else { return }
+        let zone = model.target
+        let title = Model.format(date, "EEE MMM d, HH:mm", zone)
+        let description = "Meridian · " + Zones.label(zone.identifier) + " · " + title
+        button.title = title
+        button.toolTip = description + "\nClick to convert a time, or drop a screenshot."
+        button.setAccessibilityLabel(description)
+        statusDropTarget?.toolTip = button.toolTip
+        statusDropTarget?.setAccessibilityLabel(description)
+    }
+
+    private func startMenuClock() {
+        minuteTimer?.invalidate()
+        let now = Date()
+        updateMenuClock(at: now)
+        let nextMinute = Date(timeIntervalSince1970: (floor(now.timeIntervalSince1970 / 60) + 1) * 60)
+        let timer = Timer(fire: nextMinute, interval: 60, repeats: true) { [weak self] _ in
+            self?.updateMenuClock()
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        minuteTimer = timer
+    }
+
+    @objc private func clockChanged() {
+        startMenuClock()
+        model.recalculate()
+    }
     @objc func show() {
         guard let button = status?.button else { return }
         if let chooser { chooser.makeKeyAndOrderFront(nil); return }
