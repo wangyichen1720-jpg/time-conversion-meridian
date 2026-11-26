@@ -5,6 +5,7 @@ struct ConvertedTime {
     let clock: String
     let source: Zones.Choice
     let sourceLabel: String
+    let usesDefaultZone: Bool
     let fold: String?
 }
 struct ConversionReport {
@@ -207,6 +208,7 @@ enum Converter {
                 for (k,date) in instants.enumerated() {
                     result.times.append(ConvertedTime(instant: date, clock: h.value, source: choice,
                         sourceLabel: zoneHit?.value ?? fallback.label,
+                        usesDefaultZone: zoneHit == nil,
                         fold: instants.count > 1 ? (k == 0 ? "First occurrence" : "Second occurrence") : nil))
                 }
             }

@@ -128,63 +128,118 @@ struct Interface: View {
 private struct ClockCard: View {
     @ObservedObject var model: Model
     let now: Date
-    private func sourceDescription(_ hit: ConvertedTime) -> String {
-        let parts = [hit.clock + " " + hit.sourceLabel, Model.format(hit.instant, "MMM d", hit.source.zone), hit.fold]
-        return parts.compactMap { $0 }.joined(separator: " · ")
+    private func sourceName(_ hit: ConvertedTime) -> String {
+        if hit.usesDefaultZone { return hit.source.label + " (default)" }
+        let token = hit.sourceLabel
+        guard let aliases = Zones.aliases[token.lowercased()] else {
+            return token.uppercased() == "Z" ? "UTC" : "Fixed offset"
+        }
+        let offset = Zones.utcOffset(hit.source.zone.secondsFromGMT(for: hit.instant))
+        if aliases.count > 1 {
+            let meaning = hit.source.label.replacingOccurrences(of: " (" + offset + ")", with: "")
+            return token.uppercased() + " · " + meaning
+        }
+        if token.contains("/") || token.caseInsensitiveCompare(hit.source.label) == .orderedSame {
+            return hit.source.label
+        }
+        if token.count <= 4 && token.allSatisfy(\.isLetter) {
+            let abbreviation = token.uppercased()
+            return hit.source.id.contains("/") ? abbreviation + " · " + hit.source.label : abbreviation
+        }
+        return token
     }
+
     var body: some View {
         let hit = model.current
-        let date = hit?.instant ?? now
-        let tz = model.target
-        let showSeconds = hit.map { $0.clock.filter { $0 == ":" }.count == 2 } ?? false
-        let pattern = (model.military ? "HH:mm" : "h:mm") + (showSeconds ? ":ss" : "")
-        return VStack(alignment: .leading, spacing: 0) {
+        let target = model.target
+        let seconds = hit?.clock.filter { $0 == ":" }.count == 2
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 7) {
-                Image(systemName: "globe.europe.africa").font(.system(size: 16)).foregroundStyle(brass)
+                if let hit {
+                    Dial(date: hit.instant, zone: target).frame(width: 25, height: 25).accessibilityHidden(true)
+                } else {
+                    Image(systemName: "globe.europe.africa").font(.system(size: 16)).foregroundStyle(brass)
+                }
                 Text("Meridian").font(.system(size: 17, weight: .medium, design: .serif))
                 Spacer()
-                IconButton(icon: "gearshape", label: "Settings") { model.page = .settings }
-            }
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(hit == nil ? "LOCAL CLOCK" : "CONVERTED TIME").tracking(1.5).font(.system(size: 9, weight: .bold)).foregroundStyle(brass)
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Text(Model.format(date, pattern, tz)).font(.system(size: showSeconds ? 40 : 47, weight: .regular, design: .serif)).monospacedDigit()
-                        if !model.military { Text(Model.format(date, "a", tz)).font(.system(size: 12, weight: .medium)).foregroundStyle(brass) }
-                    }.lineLimit(1).minimumScaleFactor(0.75)
-                    Text(Model.format(date, "EEEE, MMM d, yyyy", tz))
-                        .font(.system(size: 24, weight: .medium, design: .serif))
-                        .foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.85)
-                        .accessibilityLabel("Local date, " + Model.format(date, "EEEE, MMMM d, yyyy", tz))
-                    HStack(spacing: 8) {
-                        Button { model.zoneList(destination: true) } label: {
-                            HStack(spacing: 4) {
-                                Text(Zones.label(tz.identifier)).fontWeight(.semibold).lineLimit(1)
-                                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
-                            }
-                        }.buttonStyle(.plain).help("Choose your local time zone")
-                        Text(Zones.utcOffset(tz.secondsFromGMT(for: date))).foregroundStyle(.white.opacity(0.78))
-                    }.font(.system(size: 12)).padding(.top, 5)
-                }
-                Spacer(minLength: 0)
-                Dial(date: date, zone: tz).frame(width: 82, height: 82).accessibilityHidden(true)
-            }.padding(.top, 7)
-            if let hit {
-                Rectangle().fill(.white.opacity(0.20)).frame(height: 1).padding(.top, 10)
-                HStack(spacing: 4) {
-                    Text(sourceDescription(hit))
-                        .font(.system(size: 11)).lineLimit(1).help(hit.source.label + " · " + Zones.utcOffset(hit.source.zone.secondsFromGMT(for: hit.instant)))
-                    Spacer(minLength: 2)
+                if hit != nil {
                     if model.report.times.count > 1 {
                         IconButton(icon: "chevron.left", label: "Previous time") { model.index -= 1 }.disabled(model.index == 0)
-                        Text("\(model.index+1)/\(model.report.times.count)").monospacedDigit().font(.system(size: 10))
-                        IconButton(icon: "chevron.right", label: "Next time") { model.index += 1 }.disabled(model.index == model.report.times.count-1)
+                        Text("\(model.index+1)/\(model.report.times.count)").monospacedDigit().font(.system(size: 11))
+                        IconButton(icon: "chevron.right", label: "Next time") { model.index += 1 }.disabled(model.index == model.report.times.count - 1)
                     }
                     IconButton(icon: "doc.on.doc", label: "Copy result") { model.copyResult() }
-                }.frame(height: 26)
+                }
+                IconButton(icon: "gearshape", label: "Settings") { model.page = .settings }
             }
-        }.foregroundStyle(.white).padding(.horizontal, 20).padding(.top, 11).padding(.bottom, hit == nil ? 16 : 5)
-            .background(green)
+            if let hit {
+                HStack(alignment: .top, spacing: 16) {
+                    TimeReadout(title: "Detected time", instant: hit.instant, zone: hit.source.zone,
+                                zoneName: sourceName(hit), military: model.military, seconds: seconds,
+                                note: hit.fold)
+                    Rectangle().fill(.white.opacity(0.24)).frame(width: 1)
+                    TimeReadout(title: "Converted time", instant: hit.instant, zone: target,
+                                zoneName: Zones.label(target.identifier), military: model.military, seconds: seconds,
+                                chooseZone: { model.zoneList(destination: true) })
+                }.fixedSize(horizontal: false, vertical: true)
+            } else {
+                HStack(spacing: 12) {
+                    TimeReadout(title: "Local clock", instant: now, zone: target,
+                                zoneName: Zones.label(target.identifier), military: model.military, seconds: false,
+                                chooseZone: { model.zoneList(destination: true) })
+                    Dial(date: now, zone: target).frame(width: 82, height: 82).accessibilityHidden(true)
+                }
+            }
+        }
+        .foregroundStyle(.white).padding(.horizontal, 20).padding(.top, 11).padding(.bottom, 16)
+        .background(green)
+    }
+}
+
+private struct TimeReadout: View {
+    let title: String
+    let instant: Date
+    let zone: TimeZone
+    let zoneName: String
+    let military: Bool
+    let seconds: Bool
+    var note: String?
+    var chooseZone: (() -> Void)?
+
+    var body: some View {
+        let pattern = (military ? "HH:mm" : "h:mm") + (seconds ? ":ss" : "")
+        return VStack(alignment: .leading, spacing: 3) {
+            Text(title.uppercased()).tracking(1.3)
+                .font(.system(size: 11, weight: .bold)).foregroundStyle(brass)
+            HStack(alignment: .firstTextBaseline, spacing: 5) {
+                Text(Model.format(instant, pattern, zone))
+                    .font(.system(size: seconds ? 34 : 43, weight: .regular, design: .serif)).monospacedDigit()
+                if !military {
+                    Text(Model.format(instant, "a", zone)).font(.system(size: 13, weight: .semibold))
+                }
+            }.lineLimit(1).minimumScaleFactor(0.8)
+            Text(Model.format(instant, "EEEE, MMM d", zone))
+                .font(.system(size: 24, weight: .medium, design: .serif))
+                .lineLimit(1).minimumScaleFactor(0.80)
+                .accessibilityLabel(Model.format(instant, "EEEE, MMMM d", zone))
+            Group {
+                if let chooseZone {
+                    Button(action: chooseZone) {
+                        HStack(spacing: 4) {
+                            Text(zoneName)
+                            Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                        }
+                    }.buttonStyle(.plain).help("Choose your local time zone")
+                } else {
+                    Text(zoneName)
+                }
+            }.font(.system(size: 14, weight: .semibold)).padding(.top, 5)
+            Text(Zones.utcOffset(zone.secondsFromGMT(for: instant)))
+                .font(.system(size: 12)).foregroundStyle(.white.opacity(0.83))
+            if let note { Text(note).font(.system(size: 11)).foregroundStyle(brass) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -202,14 +257,18 @@ private struct Dial: View {
                 ctx.stroke(path, with:.color(color), style:StrokeStyle(lineWidth:width,lineCap:.round))
             }
             ctx.stroke(Path(ellipseIn: CGRect(x:c.x-r,y:c.y-r,width:2*r,height:2*r)), with:.color(brass.opacity(0.52)), lineWidth:0.8)
-            for i in 0..<60 {
+            let small = r < 20
+            for i in stride(from: 0, to: 60, by: small ? 15 : 1) {
                 let major = i % 5 == 0
-                line(point(Double(i)/60, r-3), point(Double(i)/60, r-(major ? 8 : 4.8)), major ? brass : .white.opacity(0.42), major ? 1.4 : 0.7)
+                line(point(Double(i)/60, r * 0.93), point(Double(i)/60, r * (major ? 0.80 : 0.88)),
+                     major ? brass : .white.opacity(0.42), small ? 0.8 : (major ? 1.4 : 0.7))
             }
             let parts = Converter.calendar(zone).dateComponents([.hour,.minute,.second], from:date)
             let m = Double(parts.minute!) + Double(parts.second!)/60, h = Double(parts.hour! % 12) + m/60
-            line(c, point(h/12,r*0.46), .white, 2.8); line(c, point(m/60,r*0.71), brass, 1.8)
-            ctx.fill(Path(ellipseIn:CGRect(x:c.x-2.6,y:c.y-2.6,width:5.2,height:5.2)), with:.color(brass))
+            line(c, point(h/12,r*0.46), .white, small ? 1.4 : 2.8)
+            line(c, point(m/60,r*0.71), brass, small ? 1 : 1.8)
+            let hub = small ? 1.0 : 2.6
+            ctx.fill(Path(ellipseIn:CGRect(x:c.x-hub,y:c.y-hub,width:hub*2,height:hub*2)), with:.color(brass))
         }
     }
 }
