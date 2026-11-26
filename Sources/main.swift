@@ -9,7 +9,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private var status: NSStatusItem!
     private weak var statusDropTarget: DropTarget?
     private var minuteTimer: Timer?
-    private var zoneObservation: AnyCancellable?
+    private var clockObservation: AnyCancellable?
     private var keyMonitor: Any?
     private var chooser: NSOpenPanel?
     private var host: NSHostingController<Interface>!
@@ -46,9 +46,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.addSubview(target)
         statusDropTarget = target
         startMenuClock()
-        zoneObservation = model.$destination.removeDuplicates().receive(on: DispatchQueue.main).sink { [weak self] _ in
-            self?.updateMenuClock()
-        }
+        clockObservation = Publishers.CombineLatest4(model.$destination, model.$showDetectedClock, model.$report, model.$index)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in self?.updateMenuClock() }
 
         host = NSHostingController(rootView:Interface(model:model))
         popover.contentViewController = host; popover.contentSize = Interface.size
@@ -73,9 +73,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func updateMenuClock(at date: Date = Date()) {
         guard let button = status?.button else { return }
         let zone = model.target
-        let title = Model.format(date, "EEE MMM d, HH:mm", zone)
-        let description = "Meridian · " + Zones.label(zone.identifier) + " · " + title
-        button.title = title
+        var title = Model.format(date, "EEE MMM d, HH:mm", zone)
+        var description = "Meridian · " + Zones.label(zone.identifier) + " · " + title
+        if model.showDetectedClock, let hit = model.current, !hit.usesDefaultZone {
+            let source = hit.source.zone
+            title += "  " + hit.menuZoneName + "·" + Model.format(date, "HH:mm", source)
+            description += "\nDetected zone · " + hit.source.label + " · " + Model.format(date, "EEE MMM d, HH:mm", source)
+        }
+        if button.title != title { button.title = title }
         button.toolTip = description + "\nClick to convert a time, or drop a screenshot."
         button.setAccessibilityLabel(description)
         statusDropTarget?.toolTip = button.toolTip

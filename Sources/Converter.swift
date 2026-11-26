@@ -7,6 +7,19 @@ struct ConvertedTime {
     let sourceLabel: String
     let usesDefaultZone: Bool
     let fold: String?
+
+    var menuZoneName: String {
+        switch source.id {
+        case "America/Los_Angeles": return "LA"
+        case "America/New_York": return "NYC"
+        default:
+            if source.id.contains("/") { return source.label }
+            if sourceLabel.count <= 5 && sourceLabel.allSatisfy(\.isLetter) {
+                return sourceLabel.uppercased()
+            }
+            return source.label
+        }
+    }
 }
 struct ConversionReport {
     var times: [ConvertedTime] = []

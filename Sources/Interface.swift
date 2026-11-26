@@ -278,22 +278,26 @@ private struct SettingsView: View {
     var body: some View {
         VStack(spacing: 0) {
             PageHeader(title: "Settings") { model.page = .converter }
-            VStack(alignment: .leading, spacing: 18) {
-                setting("My local time zone", model.destination == "device" ? "Follow Mac · " + Zones.label(model.target.identifier) : Zones.label(model.destination)) { model.zoneList(destination:true) }
-                Divider()
-                setting("Default source zone", Zones.label(model.fallback)) { model.zoneList(destination:false) }
-                Divider()
-                Toggle("24-hour clock", isOn:$model.military)
-                Divider()
-                Toggle("Choose a source date", isOn:$model.customDay)
-                if model.customDay {
-                    DatePicker("Source date", selection:$model.date, displayedComponents:.date)
-                } else {
-                    Text("Undated times use today’s date in the source zone.").font(.system(size:12)).foregroundStyle(muted)
-                }
-                Spacer()
-                Button("Quit Meridian") { NSApp.terminate(nil) }.buttonStyle(.plain).foregroundStyle(muted)
-            }.toggleStyle(.switch).font(.system(size:13)).padding(20)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    setting("My local time zone", model.destination == "device" ? "Follow Mac · " + Zones.label(model.target.identifier) : Zones.label(model.destination)) { model.zoneList(destination:true) }
+                    Divider()
+                    setting("Default source zone", Zones.label(model.fallback)) { model.zoneList(destination:false) }
+                    Divider()
+                    Toggle("24-hour clock", isOn:$model.military)
+                    Toggle("Show detected zone’s live time in menu bar", isOn: $model.showDetectedClock)
+                    Divider()
+                    Toggle("Choose a source date", isOn:$model.customDay)
+                    if model.customDay {
+                        DatePicker("Source date", selection:$model.date, displayedComponents:.date)
+                    } else {
+                        Text("Undated times use today’s date in the source zone.").font(.system(size:12)).foregroundStyle(muted)
+                    }
+                }.toggleStyle(.switch).font(.system(size:13)).padding(20)
+            }
+            Divider()
+            Button("Quit Meridian") { NSApp.terminate(nil) }.buttonStyle(.plain).foregroundStyle(muted)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal,20).padding(.vertical,10)
         }
     }
     func setting(_ title: String, _ value: String, action: @escaping () -> Void) -> some View {

@@ -10,6 +10,7 @@ final class Model: ObservableObject {
     @Published var destination: String { didSet { defaults.set(destination, forKey: "destination") } }
     @Published var fallback: String { didSet { defaults.set(fallback, forKey: "source"); recalculate() } }
     @Published var military: Bool { didSet { defaults.set(military, forKey: "24Hour") } }
+    @Published var showDetectedClock: Bool { didSet { defaults.set(showDetectedClock, forKey: "showDetectedClock") } }
     @Published var customDay = false { didSet { recalculate() } }
     @Published var date = Date() { didSet { recalculate() } }
     @Published var index = 0
@@ -37,6 +38,8 @@ final class Model: ObservableObject {
         let src = defaults.string(forKey: "source") ?? "UTC"
         fallback = TimeZone(identifier: src) != nil ? src : "UTC"
         military = defaults.bool(forKey: "24Hour")
+        defaults.register(defaults: ["showDetectedClock": true])
+        showDetectedClock = defaults.bool(forKey: "showDetectedClock")
     }
     func recalculate() {
         work?.cancel()
