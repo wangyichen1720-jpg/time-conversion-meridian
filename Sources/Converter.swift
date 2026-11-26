@@ -9,16 +9,11 @@ struct ConvertedTime {
     let fold: String?
 
     var menuZoneName: String {
-        switch source.id {
-        case "America/Los_Angeles": return "LA"
-        case "America/New_York": return "NYC"
-        default:
-            if source.id.contains("/") { return source.label }
-            if sourceLabel.count <= 5 && sourceLabel.allSatisfy(\.isLetter) {
-                return sourceLabel.uppercased()
-            }
-            return source.label
+        if source.id.contains("/") { return Zones.menuName(source.id) }
+        if sourceLabel.count <= 5 && sourceLabel.allSatisfy(\.isLetter) {
+            return sourceLabel.uppercased()
         }
+        return source.label
     }
 }
 struct ConversionReport {

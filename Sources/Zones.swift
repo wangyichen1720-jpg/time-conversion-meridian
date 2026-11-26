@@ -17,6 +17,14 @@ enum Zones {
     static func label(_ id: String) -> String {
         String(id.split(separator: "/").last ?? Substring(id)).replacingOccurrences(of: "_", with: " ")
     }
+    static func menuName(_ id: String) -> String {
+        switch id {
+        case "Asia/Shanghai": return "SH"
+        case "America/Los_Angeles": return "LA"
+        case "America/New_York": return "NYC"
+        default: return label(id)
+        }
+    }
     static func utcOffset(_ seconds: Int) -> String {
         let minutes = abs(seconds) / 60
         return String(format: "UTC%@%02d:%02d", seconds < 0 ? "−" : "+", minutes / 60, minutes % 60)

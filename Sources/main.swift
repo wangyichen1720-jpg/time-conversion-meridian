@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private let model = Model()
     private let popover = NSPopover()
     private var status: NSStatusItem!
+    private let iconAnchor = NSView()
+    private var menuFace: MenuClockFace?
     private weak var statusDropTarget: DropTarget?
     private var minuteTimer: Timer?
     private var clockObservation: AnyCancellable?
@@ -18,11 +20,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         installMenus()
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = status.button else { return }
-        let icon = NSImage(systemSymbolName:"clock.arrow.2.circlepath", accessibilityDescription:"Meridian time converter") ?? NSImage(systemSymbolName:"clock", accessibilityDescription:"Meridian")
-        icon?.isTemplate = true
-        button.image = icon
-        button.imagePosition = .imageLeft
-        button.font = .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        status.autosaveName = "MeridianClock"
+        button.imagePosition = .imageOnly
+        button.imageScaling = .scaleNone
+        button.addSubview(iconAnchor)
+        iconAnchor.setAccessibilityElement(false)
+        button.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(positionIconAnchor),
+                                               name: NSView.frameDidChangeNotification, object: button)
         button.target = self; button.action = #selector(toggle)
         let target = DropTarget(frame: button.bounds)
         target.autoresizingMask = [.width,.height]
@@ -45,6 +50,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         target.hoverChanged = { [weak button] in button?.highlight($0) }
         button.addSubview(target)
         statusDropTarget = target
+        if let window = button.window {
+            for notice in [NSWindow.didMoveNotification, NSWindow.didResizeNotification, NSWindow.didChangeScreenNotification] {
+                NotificationCenter.default.addObserver(self, selector: #selector(positionIconAnchor), name: notice, object: window)
+            }
+        }
+        NotificationCenter.default.addObserver(self, selector: #selector(positionIconAnchor),
+                                               name: NSApplication.didChangeScreenParametersNotification, object: nil)
         startMenuClock()
         clockObservation = Publishers.CombineLatest4(model.$destination, model.$showDetectedClock, model.$report, model.$index)
             .receive(on: DispatchQueue.main)
@@ -73,18 +85,48 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     private func updateMenuClock(at date: Date = Date()) {
         guard let button = status?.button else { return }
         let zone = model.target
-        var title = Model.format(date, "EEE MMM d, HH:mm", zone)
-        var description = "Meridian · " + Zones.label(zone.identifier) + " · " + title
+        let chosen = MenuClockFace.line(Zones.menuName(zone.identifier), date: date, in: zone)
+        var detected: String?
+        var description = "Meridian · " + Zones.label(zone.identifier) + " · " + chosen
         if model.showDetectedClock, let hit = model.current, !hit.usesDefaultZone {
-            let source = hit.source.zone
-            title += "  " + hit.menuZoneName + "·" + Model.format(date, "HH:mm", source)
-            description += "\nDetected zone · " + hit.source.label + " · " + Model.format(date, "EEE MMM d, HH:mm", source)
+            detected = MenuClockFace.line(hit.menuZoneName, date: date, in: hit.source.zone)
+            description += "\nDetected zone · " + hit.source.label + " · " + (detected ?? "")
         }
-        if button.title != title { button.title = title }
+        let face = MenuClockFace(chosen: chosen, detected: detected)
+        if face != menuFace {
+            menuFace = face
+            button.image = face.image
+            positionIconAnchor()
+        }
         button.toolTip = description + "\nClick to convert a time, or drop a screenshot."
         button.setAccessibilityLabel(description)
         statusDropTarget?.toolTip = button.toolTip
         statusDropTarget?.setAccessibilityLabel(description)
+    }
+
+    @objc private func positionIconAnchor() {
+        guard let button = status?.button, let image = button.image else { return }
+        let left = max(button.bounds.minX, button.bounds.midX - image.size.width / 2)
+        iconAnchor.frame = NSRect(x: left, y: button.bounds.minY,
+                                  width: MenuClockFace.iconWidth, height: button.bounds.height)
+        // The menu bar moves the status window asynchronously when a clock row changes width.
+        if popover.isShown {
+            DispatchQueue.main.async { [weak self] in self?.alignOpenPanel() }
+        }
+    }
+
+    private func alignOpenPanel() {
+        guard popover.isShown, let menuWindow = iconAnchor.window, let panel = host.view.window,
+              let screen = menuWindow.screen else { return }
+        let icon = menuWindow.convertToScreen(iconAnchor.convert(iconAnchor.bounds, to: nil))
+        guard screen.frame.contains(NSPoint(x: icon.midX, y: icon.midY)) else { return }
+        let visible = screen.visibleFrame
+        let centered = (icon.midX - panel.frame.width / 2).rounded()
+        let x = max(visible.minX, min(centered, visible.maxX - panel.frame.width))
+        let top = min(visible.maxY, menuWindow.frame.minY)
+        let y = max(visible.minY, top - panel.frame.height)
+        let origin = NSPoint(x: x, y: y)
+        if panel.frame.origin != origin { panel.setFrameOrigin(origin) }
     }
 
     private func startMenuClock() {
@@ -104,11 +146,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.recalculate()
     }
     @objc func show() {
-        guard let button = status?.button else { return }
+        guard iconAnchor.window != nil else { return }
         if let chooser { chooser.makeKeyAndOrderFront(nil); return }
         if !popover.isShown {
             model.recalculate()
-            popover.show(relativeTo:button.bounds,of:button,preferredEdge:.minY)
+            positionIconAnchor()
+            popover.show(relativeTo: .zero, of: iconAnchor, preferredEdge: .minY)
         }
         NSApp.activate(ignoringOtherApps:true)
         host.view.window?.makeKeyAndOrderFront(nil)
@@ -128,6 +171,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func popoverDidShow(_ notification:Notification) {
         host.view.window?.hidesOnDeactivate = false
         host.view.window?.level = .floating
+        alignOpenPanel()
         guard model.page == .converter else { return }
         func find(_ view:NSView) -> NSTextView? {
             if let text = view as? NSTextView { return text }
