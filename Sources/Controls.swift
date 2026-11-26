@@ -34,8 +34,8 @@ struct TimeEditor: NSViewRepresentable {
         editor.textContainer?.lineFragmentPadding = 0
         editor.textContainerInset = NSSize(width: 11, height: 8)
         editor.font = NSFont.systemFont(ofSize: 15)
-        editor.textColor = NSColor(srgbRed:0.10,green:0.16,blue:0.14,alpha:1)
-        editor.insertionPointColor = .systemGreen
+        editor.textColor = .textColor
+        editor.insertionPointColor = .controlAccentColor
         editor.isAutomaticQuoteSubstitutionEnabled = false; editor.isAutomaticDashSubstitutionEnabled = false
         editor.isAutomaticTextReplacementEnabled = false; editor.isAutomaticSpellingCorrectionEnabled = false
         editor.setAccessibilityLabel("Time to convert")

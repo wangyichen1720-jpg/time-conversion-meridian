@@ -1,23 +1,41 @@
 import SwiftUI
 import AppKit
 
-private let paper = Color(red: 0.975, green: 0.969, blue: 0.943)
-private let ink = Color(red: 0.10, green: 0.16, blue: 0.14)
-private let muted = Color(red: 0.31, green: 0.36, blue: 0.32)
+private let muted = Color(nsColor: .secondaryLabelColor)
+private let field = Color(nsColor: .textBackgroundColor)
 private let green = Color(red: 0.067, green: 0.213, blue: 0.182)
 private let brass = Color(red: 0.90, green: 0.75, blue: 0.45)
-private let rule = Color(red: 0.81, green: 0.83, blue: 0.78)
+private let rule = Color(nsColor: .separatorColor)
 
 private struct IconButton: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let icon: String, label: String
     var action: () -> Void
+
     var body: some View {
-        Button(action: action) { Image(systemName: icon).frame(width: 27, height: 27).contentShape(Rectangle()) }
-            .buttonStyle(.plain).help(label).accessibilityLabel(label)
+        let button = Button(action: action) { Image(systemName: icon).frame(width: 15, height: 17) }
+        Group {
+            if #available(macOS 26.0, *), !reduceTransparency {
+                button.buttonStyle(.glass).buttonBorderShape(.circle)
+            } else {
+                button.buttonStyle(.bordered)
+            }
+        }
+        .controlSize(.regular).help(label).accessibilityLabel(label)
+    }
+}
+
+private struct NavigationBar<Content: View>: View {
+    @ViewBuilder var content: Content
+    var body: some View {
+        HStack(spacing: 7) { content }
+            .padding(.horizontal, 16).frame(height: 46)
     }
 }
 
 struct Interface: View {
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
     static let size = NSSize(width: 476, height: 430)
     @ObservedObject var model: Model
     var body: some View {
@@ -29,7 +47,9 @@ struct Interface: View {
             }
         }
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
-        .background(paper).foregroundStyle(ink).preferredColorScheme(.light)
+        .background {
+            if reduceTransparency { Color(nsColor: .windowBackgroundColor) }
+        }
     }
 
     var converter: some View {
@@ -69,7 +89,7 @@ struct Interface: View {
             }.frame(height: 23)
             TimeEditor(text: $model.text, pasteImage: { model.accept(.general, textAllowed: false) })
                 .frame(height: 80)
-                .background(.white)
+                .background(field)
                 .overlay(alignment: .topLeading) {
                     if model.text.isEmpty {
                         Text("e.g. 9:30 AM Tokyo").foregroundStyle(muted).font(.system(size: 14))
@@ -87,8 +107,8 @@ struct Interface: View {
             }.buttonStyle(.plain).font(.system(size: 11)).frame(height: 22)
                 .help("Source time zone for text without a zone")
         }
-        .padding(13).background(RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.78)))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(rule))
+        .padding(13).background(RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(contrast == .increased ? Color.primary : rule))
     }
 
     private var imagePanel: some View {
@@ -103,9 +123,9 @@ struct Interface: View {
                     Text(name).font(.system(size: 10)).foregroundStyle(muted).lineLimit(1)
                 }
             }
-            .foregroundStyle(green).frame(maxWidth: .infinity).frame(height: 80)
-            .background(RoundedRectangle(cornerRadius: 6).fill(.white.opacity(0.52)))
-            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(green.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+            .foregroundStyle(.primary).frame(maxWidth: .infinity).frame(height: 80)
+            .background(RoundedRectangle(cornerRadius: 6).fill(field))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
             .overlay(DropArea(model: model))
             .accessibilityElement(children: .ignore).accessibilityLabel("Drop a screenshot or choose an image")
             .accessibilityAddTraits(.isButton).accessibilityAction { model.chooseFile?() }
@@ -120,8 +140,8 @@ struct Interface: View {
                 .help("Paste a screenshot or time")
         }
         .padding(13)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.90, green: 0.93, blue: 0.89)))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(green.opacity(0.20)))
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .controlBackgroundColor)))
+        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(contrast == .increased ? Color.primary : rule))
     }
 }
 
@@ -153,12 +173,13 @@ private struct ClockCard: View {
         let hit = model.current
         let target = model.target
         let seconds = hit?.clock.filter { $0 == ":" }.count == 2
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 7) {
+        return VStack(alignment: .leading, spacing: 0) {
+            NavigationBar {
                 if let hit {
-                    Dial(date: hit.instant, zone: target).frame(width: 25, height: 25).accessibilityHidden(true)
+                    Dial(date: hit.instant, zone: target)
+                        .frame(width: 25, height: 25).background(green, in: Circle()).accessibilityHidden(true)
                 } else {
-                    Image(systemName: "globe.europe.africa").font(.system(size: 16)).foregroundStyle(brass)
+                    Image(systemName: "globe.europe.africa").font(.system(size: 16)).foregroundStyle(.secondary)
                 }
                 Text("Meridian").font(.system(size: 17, weight: .medium, design: .serif))
                 Spacer()
@@ -172,27 +193,30 @@ private struct ClockCard: View {
                 }
                 IconButton(icon: "gearshape", label: "Settings") { model.page = .settings }
             }
-            if let hit {
-                HStack(alignment: .top, spacing: 16) {
-                    TimeReadout(title: "Detected time", instant: hit.instant, zone: hit.source.zone,
-                                zoneName: sourceName(hit), military: model.military, seconds: seconds,
-                                note: hit.fold)
-                    Rectangle().fill(.white.opacity(0.24)).frame(width: 1)
-                    TimeReadout(title: "Converted time", instant: hit.instant, zone: target,
-                                zoneName: Zones.label(target.identifier), military: model.military, seconds: seconds,
-                                chooseZone: { model.zoneList(destination: true) })
-                }.fixedSize(horizontal: false, vertical: true)
-            } else {
-                HStack(spacing: 12) {
-                    TimeReadout(title: "Local clock", instant: now, zone: target,
-                                zoneName: Zones.label(target.identifier), military: model.military, seconds: false,
-                                chooseZone: { model.zoneList(destination: true) })
-                    Dial(date: now, zone: target).frame(width: 82, height: 82).accessibilityHidden(true)
+            Group {
+                if let hit {
+                    HStack(alignment: .top, spacing: 16) {
+                        TimeReadout(title: "Detected time", instant: hit.instant, zone: hit.source.zone,
+                                    zoneName: sourceName(hit), military: model.military, seconds: seconds,
+                                    note: hit.fold)
+                        Rectangle().fill(.white.opacity(0.24)).frame(width: 1)
+                        TimeReadout(title: "Converted time", instant: hit.instant, zone: target,
+                                    zoneName: Zones.label(target.identifier), military: model.military, seconds: seconds,
+                                    chooseZone: { model.zoneList(destination: true) })
+                    }.fixedSize(horizontal: false, vertical: true)
+                } else {
+                    HStack(spacing: 12) {
+                        TimeReadout(title: "Local clock", instant: now, zone: target,
+                                    zoneName: Zones.label(target.identifier), military: model.military, seconds: false,
+                                    chooseZone: { model.zoneList(destination: true) })
+                        Dial(date: now, zone: target).frame(width: 82, height: 82).accessibilityHidden(true)
+                    }
                 }
             }
+            .foregroundStyle(.white).padding(.horizontal, 15).padding(.vertical, 12)
+            .background(green, in: RoundedRectangle(cornerRadius: 14))
+            .padding(.horizontal, 14)
         }
-        .foregroundStyle(.white).padding(.horizontal, 20).padding(.top, 11).padding(.bottom, 16)
-        .background(green)
     }
 }
 
@@ -312,8 +336,8 @@ private struct PageHeader: View {
     let title: String
     let back: () -> Void
     var body: some View {
-        HStack { IconButton(icon:"chevron.left", label:"Back", action:back); Text(title).font(.system(size:18,weight:.medium,design:.serif)); Spacer() }
-        .padding(.horizontal,14).frame(height:55).foregroundStyle(.white).background(green)
+        NavigationBar { IconButton(icon:"chevron.left", label:"Back", action:back); Text(title).font(.system(size:18,weight:.medium,design:.serif)); Spacer() }
+        .overlay(alignment: .bottom) { Divider() }
     }
 }
 
@@ -336,7 +360,7 @@ private struct ZoneList: View {
         VStack(spacing:0) {
             PageHeader(title:target ? "My local time zone" : "Default source zone") { model.page = model.zoneReturn }
             HStack { Image(systemName:"magnifyingglass").foregroundStyle(muted); TextField("Search cities or time zones",text:$search).textFieldStyle(.plain).focused($focused) }
-                .padding(10).background(.white.opacity(0.7)).clipShape(RoundedRectangle(cornerRadius:7)).padding(12)
+                .padding(10).background(field).clipShape(RoundedRectangle(cornerRadius:7)).padding(12)
             ScrollView {
                 LazyVStack(spacing:0) {
                     if target && search.isEmpty { row("device", "Follow my Mac", TimeZone.current.identifier) }
@@ -351,7 +375,7 @@ private struct ZoneList: View {
             model.page = model.zoneReturn
         } label: {
             HStack { VStack(alignment:.leading,spacing:2) { Text(label).font(.system(size:13,weight:.medium)); Text(detail).font(.system(size:10)).foregroundStyle(muted) }; Spacer()
-                if (target ? model.destination : model.fallback) == id { Image(systemName:"checkmark").foregroundStyle(green) }
+                if (target ? model.destination : model.fallback) == id { Image(systemName:"checkmark").foregroundStyle(Color.accentColor) }
             }.padding(.horizontal,20).padding(.vertical,6).contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
