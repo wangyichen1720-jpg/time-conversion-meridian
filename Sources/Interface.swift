@@ -128,13 +128,17 @@ struct Interface: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Screenshot").font(.system(size: 16, weight: .semibold)).frame(height: 23)
             VStack(spacing: 5) {
-                Image(systemName: model.reading ? "text.viewfinder" : "photo.on.rectangle.angled")
-                    .font(.system(size: 20)).accessibilityHidden(true)
-                Text(model.reading ? "Reading image…" : "Drop or choose image")
-                    .font(.system(size: 11, weight: .medium))
-                if let name = model.imageName {
-                    Text(name).font(.system(size: 10)).foregroundStyle(muted).lineLimit(1)
+                if let preview = model.preview {
+                    Image(decorative: preview, scale: 1)
+                        .resizable().scaledToFit().frame(maxHeight: 46)
+                } else if model.reading {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "photo.on.rectangle.angled")
+                        .font(.system(size: 20)).accessibilityHidden(true)
                 }
+                Text(model.reading ? "Reading image…" : model.imageName ?? "Drop or choose image")
+                    .font(.system(size: 11, weight: .medium)).lineLimit(1)
             }
             .foregroundStyle(.primary).frame(maxWidth: .infinity).frame(height: 80)
             .background(RoundedRectangle(cornerRadius: 6).fill(field))

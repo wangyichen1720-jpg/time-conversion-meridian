@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import Vision
 import UniformTypeIdentifiers
 
 final class Model: ObservableObject {
@@ -17,15 +18,24 @@ final class Model: ObservableObject {
     @Published var report = ConversionReport()
     @Published var reading = false
     @Published var message: String?
+    @Published var preview: CGImage?
     @Published var imageName: String?
     @Published var resolutions: [String:String] = [:] { didSet { recalculate() } }
     private let defaults: UserDefaults
     private var generation = UUID()
+    private var imageWork: BlockOperation?
+    private var recognition: VNRecognizeTextRequest?
+    private let promiseQueue = OperationQueue()
     private var readingResult = false
     private var work: DispatchWorkItem?
     private var calculation: UInt64 = 0
     private let queue = DispatchQueue(label: "Meridian.conversion", qos: .userInitiated)
-    private let imageQueue = DispatchQueue(label: "Meridian.images", qos: .userInitiated)
+    private let imageQueue: OperationQueue = {
+        let queue = OperationQueue()
+        queue.maxConcurrentOperationCount = 1
+        queue.qualityOfService = .userInitiated
+        return queue
+    }()
     var chooseFile: (() -> Void)?
     var current: ConvertedTime? { report.times.indices.contains(index) ? report.times[index] : nil }
     var target: TimeZone { destination == "device" ? .autoupdatingCurrent : TimeZone(identifier: destination) ?? .current }
@@ -60,6 +70,11 @@ final class Model: ObservableObject {
         queue.asyncAfter(deadline: .now() + 0.10, execute: task)
     }
     func invalidateRead() {
+        imageWork?.cancel()
+        imageWork = nil
+        recognition?.cancel()
+        recognition = nil
+        preview = nil
         generation = UUID(); reading = false; imageName = nil; message = nil
     }
     func beginImage() -> UUID {
@@ -69,10 +84,24 @@ final class Model: ObservableObject {
     func read(_ input: ImageInput, name: String, token: UUID? = nil) {
         let id = token ?? beginImage()
         guard generation == id else { return }
-        imageQueue.async { [weak self] in
-            let result = Result { try ImageReader.recognize(input) }
+        imageName = name
+        let request = VNRecognizeTextRequest()
+        recognition = request
+        let operation = BlockOperation()
+        imageWork = operation
+        operation.addExecutionBlock { [weak self, weak operation] in
+            let result = Result {
+                try ImageReader.recognize(input, request: request, cancelled: { operation?.isCancelled != false }) { thumbnail in
+                    DispatchQueue.main.async { [weak self] in
+                        guard let self, self.generation == id else { return }
+                        self.preview = thumbnail
+                    }
+                }
+            }
             DispatchQueue.main.async {
                 guard let self, self.generation == id else { return }
+                self.imageWork = nil
+                self.recognition = nil
                 self.reading = false
                 switch result {
                 case .success(let text):
@@ -82,6 +111,7 @@ final class Model: ObservableObject {
                 }
             }
         }
+        imageQueue.addOperation(operation)
     }
     func failRead(_ error: Error, token: UUID) {
         guard generation == token else { return }
@@ -108,13 +138,19 @@ final class Model: ObservableObject {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = zone
         f.dateFormat = pattern; return f.string(from: date)
     }
+    static let imageTypes = [NSPasteboard.PasteboardType.png, NSPasteboard.PasteboardType(UTType.jpeg.identifier),
+                             NSPasteboard.PasteboardType(UTType.heic.identifier), .tiff]
     static let dropTypes = Array(Set([NSPasteboard.PasteboardType.fileURL, .tiff, .png, .string] + NSFilePromiseReceiver.readableDraggedTypes.map { NSPasteboard.PasteboardType($0) } + NSImage.imageTypes.map { NSPasteboard.PasteboardType($0) }))
     static func hasImage(_ pb: NSPasteboard) -> Bool {
-        pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly:true]) ||
+        pb.availableType(from: [.fileURL]) != nil || pb.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly:true]) ||
         pb.canReadObject(forClasses: [NSFilePromiseReceiver.self], options: nil) ||
-        pb.availableType(from: [.png, .tiff]) != nil || pb.canReadObject(forClasses: [NSImage.self], options: nil)
+        pb.availableType(from: imageTypes) != nil || pb.canReadObject(forClasses: [NSImage.self], options: nil)
     }
     @discardableResult func accept(_ pb: NSPasteboard, textAllowed: Bool = true) -> Bool {
+        if let string = pb.string(forType: .fileURL), let url = URL(string: string), url.isFileURL {
+            read(.file(url), name: url.lastPathComponent)
+            return true
+        }
         if let url = (pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly:true]) as? [URL])?.first {
             read(.file(url), name: url.lastPathComponent); return true
         }
@@ -123,17 +159,17 @@ final class Model: ObservableObject {
             let dir = FileManager.default.temporaryDirectory.appendingPathComponent("Meridian-" + UUID().uuidString, isDirectory: true)
             do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) }
             catch { failRead(error, token: id); return true }
-            receiver.receivePromisedFiles(atDestination: dir, options: [:], operationQueue: .main) { [weak self] url, error in
+            receiver.receivePromisedFiles(atDestination: dir, options: [:], operationQueue: promiseQueue) { [weak self] url, error in
                 defer { try? FileManager.default.removeItem(at: dir) }
                 do {
                     if let error { throw error }
-                    let data = try Data(contentsOf: url)
-                    self?.read(.data(data), name: url.lastPathComponent, token: id)
-                } catch { self?.failRead(error, token: id) }
+                    let data = try Data(contentsOf: url, options: .mappedIfSafe)
+                    DispatchQueue.main.async { self?.read(.data(data), name: url.lastPathComponent, token: id) }
+                } catch { DispatchQueue.main.async { self?.failRead(error, token: id) } }
             }
             return true
         }
-        if let type = pb.availableType(from: [.png, .tiff]), let data = pb.data(forType: type) {
+        if let type = pb.availableType(from: Self.imageTypes), let data = pb.data(forType: type) {
             read(.data(data), name: "Screenshot"); return true
         }
         if let image = (pb.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage])?.first, let data = image.tiffRepresentation {
