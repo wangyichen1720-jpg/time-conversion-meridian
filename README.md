@@ -11,6 +11,8 @@ Meridian is a native macOS menu bar time converter. It requires macOS 13 or late
 
 The clock shows the current time in the destination zone until it has a conversion to display. The display omits the year. A year supplied in the input still determines the correct calendar date and time zone offset.
 
+Open Settings with **⌘,**. In Settings or a time zone picker, use **Back**, **Esc**, or **⌘[** to return one level. Press **Return** to choose a unique search result.
+
 ## Input examples
 
 | Input | Interpretation |

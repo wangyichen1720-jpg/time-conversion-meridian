@@ -40,9 +40,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         target.contextAction = { [weak self, weak target] in
             guard let self, let target else { return }
             let menu = NSMenu()
-            for (title,action) in [("Open Meridian",#selector(self.show)),("Settings…",#selector(self.settings)),("Quit Meridian",#selector(self.quit))] {
-                let entry = menu.addItem(withTitle:title,action:action,keyEquivalent:""); entry.target = self
-            }
+            menu.addItem(withTitle: "Open Meridian", action: #selector(self.openConverter), keyEquivalent: "").target = self
+            self.addAppCommands(to: menu)
             menu.popUp(positioning:nil,at:NSPoint(x:0,y:0),in:target)
         }
         target.receive = { [weak self] pb in
@@ -72,6 +71,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         model.chooseFile = { [weak self] in self?.openFile() }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching:.keyDown) { [weak self] e in
             guard let self, self.popover.isShown, self.chooser == nil else { return e }
+            let modifiers = e.modifierFlags.intersection([.command, .control, .shift, .option])
+            if self.model.page != .converter && e.window === self.host.view.window {
+                let composing = (e.window?.firstResponder as? NSTextView)?.hasMarkedText() == true
+                if !composing && ((e.keyCode == 53 && modifiers.isEmpty) ||
+                    (e.charactersIgnoringModifiers == "[" && modifiers == .command)) {
+                    self.model.goBack()
+                    return nil
+                }
+            }
             if e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, e.charactersIgnoringModifiers?.lowercased() == "v", self.model.page == .converter {
                 if Model.hasImage(.general) || !(self.host.view.window?.firstResponder is NSTextView) {
                     self.model.paste(); return nil
@@ -193,6 +201,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     }
     // AppKit consults this for implicit dismissals. Only the status item calls close() directly.
     func popoverShouldClose(_ popover: NSPopover) -> Bool { false }
+    @objc func openConverter() { model.page = .converter; show() }
     @objc func settings() { model.page = .settings; show() }
     @objc func quit() { NSApp.terminate(nil) }
     func popoverDidShow(_ notification:Notification) {
@@ -221,9 +230,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
             if response == .OK, let url = panel.url { self.model.read(.file(url), name:url.lastPathComponent) }
         }
     }
+    private func addAppCommands(to menu: NSMenu) {
+        menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Quit Meridian", action: #selector(quit), keyEquivalent: "q").target = self
+    }
     private func installMenus() {
         let bar = NSMenu()
-        let app = NSMenu(); app.addItem(withTitle:"Quit Meridian",action:#selector(NSApplication.terminate(_:)),keyEquivalent:"q")
+        let app = NSMenu(title: "Meridian"); addAppCommands(to: app)
         let appItem = NSMenuItem(); appItem.submenu = app; bar.addItem(appItem)
         let edit = NSMenu(title:"Edit")
         for (title,action,key) in [("Undo","undo:","z"),("Cut","cut:","x"),("Copy","copy:","c"),("Paste","paste:","v"),("Select All","selectAll:","a")] {

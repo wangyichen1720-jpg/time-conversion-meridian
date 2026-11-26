@@ -87,6 +87,13 @@ final class Model: ObservableObject {
         guard generation == token else { return }
         reading = false; message = error.localizedDescription
     }
+    func goBack() {
+        switch page {
+        case .source, .destination: page = zoneReturn
+        case .settings: page = .converter
+        case .converter: break
+        }
+    }
     func zoneList(destination: Bool) {
         zoneReturn = page; page = destination ? .destination : .source
     }

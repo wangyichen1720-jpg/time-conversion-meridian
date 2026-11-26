@@ -301,24 +301,25 @@ private struct SettingsView: View {
     @ObservedObject var model: Model
     var body: some View {
         VStack(spacing: 0) {
-            PageHeader(title: "Settings") { model.page = .converter }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    setting("My local time zone", model.destination == "device" ? "Follow Mac · " + Zones.label(model.target.identifier) : Zones.label(model.destination)) { model.zoneList(destination:true) }
-                    Divider()
-                    setting("Default source zone", Zones.label(model.fallback)) { model.zoneList(destination:false) }
-                    Divider()
-                    Toggle("24-hour clock", isOn:$model.military)
+            PageHeader(title: "Settings", back: model.goBack)
+            Form {
+                Section("Time Zones") {
+                    setting("My local time zone", model.destination == "device" ? "Follow Mac · " + Zones.label(model.target.identifier) : Zones.label(model.destination)) { model.zoneList(destination: true) }
+                    setting("Default source zone", Zones.label(model.fallback)) { model.zoneList(destination: false) }
+                }
+                Section("Clocks") {
+                    Toggle("Use a 24-hour clock in the converter", isOn: $model.military)
                     Toggle("Show detected zone’s live time in menu bar", isOn: $model.showDetectedClock)
-                    Divider()
-                    Toggle("Choose a source date", isOn:$model.customDay)
+                }
+                Section("Undated Times") {
+                    Toggle("Choose a source date", isOn: $model.customDay)
                     if model.customDay {
-                        DatePicker("Source date", selection:$model.date, displayedComponents:.date)
+                        DatePicker("Source date", selection: $model.date, displayedComponents: .date)
                     } else {
-                        Text("Undated times use today’s date in the source zone.").font(.system(size:12)).foregroundStyle(muted)
+                        Text("Uses today’s date in the source zone.").font(.callout).foregroundStyle(.secondary)
                     }
-                }.toggleStyle(.switch).font(.system(size:13)).padding(20)
-            }
+                }
+            }.formStyle(.grouped)
             Divider()
             Button("Quit Meridian") { NSApp.terminate(nil) }.buttonStyle(.plain).foregroundStyle(muted)
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal,20).padding(.vertical,10)
@@ -336,7 +337,14 @@ private struct PageHeader: View {
     let title: String
     let back: () -> Void
     var body: some View {
-        NavigationBar { IconButton(icon:"chevron.left", label:"Back", action:back); Text(title).font(.system(size:18,weight:.medium,design:.serif)); Spacer() }
+        NavigationBar {
+            Button(action: back) {
+                Label("Back", systemImage: "chevron.backward")
+            }
+            .buttonStyle(.bordered).help("Go back (⌘[)")
+            Spacer()
+        }
+        .overlay { Text(title).font(.headline).accessibilityAddTraits(.isHeader).allowsHitTesting(false) }
         .overlay(alignment: .bottom) { Divider() }
     }
 }
@@ -358,23 +366,30 @@ private struct ZoneList: View {
     }
     var body: some View {
         VStack(spacing:0) {
-            PageHeader(title:target ? "My local time zone" : "Default source zone") { model.page = model.zoneReturn }
-            HStack { Image(systemName:"magnifyingglass").foregroundStyle(muted); TextField("Search cities or time zones",text:$search).textFieldStyle(.plain).focused($focused) }
+            PageHeader(title: target ? "My Local Time Zone" : "Default Source Zone", back: model.goBack)
+            HStack { Image(systemName:"magnifyingglass").foregroundStyle(muted); TextField("Search cities or time zones",text:$search).textFieldStyle(.plain).focused($focused)
+                    .onSubmit {
+                        if !search.trimmingCharacters(in: .whitespaces).isEmpty, items.count == 1 { select(items[0].id) }
+                    } }
                 .padding(10).background(field).clipShape(RoundedRectangle(cornerRadius:7)).padding(12)
             ScrollView {
                 LazyVStack(spacing:0) {
                     if target && search.isEmpty { row("device", "Follow my Mac", TimeZone.current.identifier) }
+                    if items.isEmpty {
+                        Text("No matching time zones").font(.body).foregroundStyle(.secondary).padding()
+                    }
                     ForEach(items) { item in row(item.id, item.label, item.id) }
                 }
             }
         }.onAppear { focused = true }
     }
+    private func select(_ id: String) {
+        if target { model.destination = id } else { model.fallback = id }
+        model.goBack()
+    }
     func row(_ id:String, _ label:String, _ detail:String) -> some View {
-        Button {
-            if target { model.destination = id } else { model.fallback = id }
-            model.page = model.zoneReturn
-        } label: {
-            HStack { VStack(alignment:.leading,spacing:2) { Text(label).font(.system(size:13,weight:.medium)); Text(detail).font(.system(size:10)).foregroundStyle(muted) }; Spacer()
+        Button { select(id) } label: {
+            HStack { VStack(alignment:.leading,spacing:2) { Text(label).font(.system(size:13,weight:.medium)); Text(detail).font(.caption).foregroundStyle(.secondary) }; Spacer()
                 if (target ? model.destination : model.fallback) == id { Image(systemName:"checkmark").foregroundStyle(Color.accentColor) }
             }.padding(.horizontal,20).padding(.vertical,6).contentShape(Rectangle())
         }.buttonStyle(.plain)
