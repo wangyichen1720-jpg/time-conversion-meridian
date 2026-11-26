@@ -99,10 +99,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let zone = model.target
         let chosen = MenuClockFace.line(Zones.menuName(zone.identifier), date: date, in: zone)
         var detected: String?
-        var description = "Meridian · " + Zones.label(zone.identifier) + " · " + chosen
+        var description = "Meridian · " + Zones.displayName(Zones.label(zone.identifier), in: zone, at: date) + " · " + chosen
         if model.showDetectedClock, let hit = model.current, !hit.usesDefaultZone {
             detected = MenuClockFace.line(hit.menuZoneName, date: date, in: hit.source.zone)
-            description += "\nDetected zone · " + hit.source.label + " · " + (detected ?? "")
+            description += "\nDetected zone · " + Zones.displayName(hit.source.label, in: hit.source.zone, at: date) + " · " + (detected ?? "")
         }
         let face = MenuClockFace(chosen: chosen, detected: detected)
         if face != menuFace {

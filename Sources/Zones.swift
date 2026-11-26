@@ -29,6 +29,19 @@ enum Zones {
         let minutes = abs(seconds) / 60
         return String(format: "UTC%@%02d:%02d", seconds < 0 ? "−" : "+", minutes / 60, minutes % 60)
     }
+    static func displayName(_ name: String, in zone: TimeZone, at date: Date = Date()) -> String {
+        let seconds = zone.secondsFromGMT(for: date)
+        let offset = utcOffset(seconds)
+        let minutes = abs(seconds) / 60
+        let formatted = String(format: "UTC%@%d:%02d", seconds < 0 ? "−" : "+", minutes / 60, minutes % 60)
+        if name == offset { return formatted }
+        if name.hasSuffix("(" + offset + ")") { return name.replacingOccurrences(of: offset, with: formatted) }
+        return name + " (" + formatted + ")"
+    }
+    static func displayName(_ identifier: String) -> String {
+        guard let zone = TimeZone(identifier: identifier) else { return label(identifier) }
+        return displayName(label(identifier), in: zone)
+    }
     struct Choice: Hashable {
         let id: String
         let label: String

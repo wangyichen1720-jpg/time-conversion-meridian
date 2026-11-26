@@ -36,16 +36,22 @@ private struct NavigationBar<Content: View>: View {
 struct Interface: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     static let size = NSSize(width: 476, height: 430)
     @ObservedObject var model: Model
     var body: some View {
-        Group {
-            switch model.page {
-            case .converter: converter
-            case .settings: SettingsView(model: model)
-            case .source, .destination: ZoneList(model: model).id(model.page == .source)
+        ZStack(alignment: .top) {
+            Group {
+                switch model.page {
+                case .converter: converter
+                case .settings: SettingsView(model: model)
+                case .source, .destination: ZoneList(model: model, target: model.page == .destination)
+                }
             }
+            .id(model.page)
+            .transition(.opacity)
         }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: model.page)
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
         .background {
             if reduceTransparency { Color(nsColor: .windowBackgroundColor) }
@@ -67,7 +73,7 @@ struct Interface: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Which time zone is “" + question.0 + "”?").fontWeight(.semibold)
                             ForEach(question.1, id: \.id) { zone in
-                                Button(zone.label) { model.resolutions[question.0] = zone.id }.buttonStyle(.link)
+                                Button(Zones.displayName(zone.label, in: zone.zone)) { model.resolutions[question.0] = zone.id }.buttonStyle(.link)
                             }
                         }.font(.system(size: 12))
                     }
@@ -101,7 +107,7 @@ struct Interface: View {
             Button { model.zoneList(destination: false) } label: {
                 HStack(spacing: 4) {
                     Text("Default zone").foregroundStyle(muted)
-                    Text(Zones.label(model.fallback)).fontWeight(.semibold).lineLimit(1)
+                    Text(Zones.displayName(model.fallback)).fontWeight(.semibold).lineLimit(1)
                     Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
                 }
             }.buttonStyle(.plain).font(.system(size: 11)).frame(height: 22)
@@ -250,16 +256,14 @@ private struct TimeReadout: View {
                 if let chooseZone {
                     Button(action: chooseZone) {
                         HStack(spacing: 4) {
-                            Text(zoneName)
+                            Text(Zones.displayName(zoneName, in: zone, at: instant))
                             Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
                         }
                     }.buttonStyle(.plain).help("Choose your local time zone")
                 } else {
-                    Text(zoneName)
+                    Text(Zones.displayName(zoneName, in: zone, at: instant))
                 }
             }.font(.system(size: 14, weight: .semibold)).padding(.top, 5)
-            Text(Zones.utcOffset(zone.secondsFromGMT(for: instant)))
-                .font(.system(size: 12)).foregroundStyle(.white.opacity(0.83))
             if let note { Text(note).font(.system(size: 11)).foregroundStyle(brass) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -304,8 +308,8 @@ private struct SettingsView: View {
             PageHeader(title: "Settings", back: model.goBack)
             Form {
                 Section("Time Zones") {
-                    setting("My local time zone", model.destination == "device" ? "Follow Mac · " + Zones.label(model.target.identifier) : Zones.label(model.destination)) { model.zoneList(destination: true) }
-                    setting("Default source zone", Zones.label(model.fallback)) { model.zoneList(destination: false) }
+                    setting("My local time zone", model.destination == "device" ? "Follow Mac · " + Zones.displayName(model.target.identifier) : Zones.displayName(model.destination)) { model.zoneList(destination: true) }
+                    setting("Default source zone", Zones.displayName(model.fallback)) { model.zoneList(destination: false) }
                 }
                 Section("Clocks") {
                     Toggle("Use a 24-hour clock in the converter", isOn: $model.military)
@@ -353,7 +357,7 @@ private struct ZoneList: View {
     @ObservedObject var model: Model
     @State private var search = ""
     @FocusState private var focused: Bool
-    private var target: Bool { model.page == .destination }
+    let target: Bool
     private let common = ["UTC","America/Los_Angeles","America/New_York","Europe/London","Europe/Paris","Asia/Kolkata","Asia/Shanghai","Asia/Seoul","Asia/Tokyo","Australia/Sydney"]
     private var items: [ZoneOption] {
         let all = Zones.all
@@ -389,7 +393,7 @@ private struct ZoneList: View {
     }
     func row(_ id:String, _ label:String, _ detail:String) -> some View {
         Button { select(id) } label: {
-            HStack { VStack(alignment:.leading,spacing:2) { Text(label).font(.system(size:13,weight:.medium)); Text(detail).font(.caption).foregroundStyle(.secondary) }; Spacer()
+            HStack { VStack(alignment:.leading,spacing:2) { Text(Zones.displayName(label, in: TimeZone(identifier: detail)!)).font(.system(size:13,weight:.medium)); Text(detail).font(.caption).foregroundStyle(.secondary) }; Spacer()
                 if (target ? model.destination : model.fallback) == id { Image(systemName:"checkmark").foregroundStyle(Color.accentColor) }
             }.padding(.horizontal,20).padding(.vertical,6).contentShape(Rectangle())
         }.buttonStyle(.plain)
