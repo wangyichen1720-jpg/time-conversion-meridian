@@ -4,7 +4,7 @@ Meridian is a native macOS menu bar time converter. It requires macOS 13 or late
 
 ## Use
 
-1. Open Meridian.app. Click the clock icon in the menu bar to reopen it.
+1. Open Meridian.app. Click the menu bar clock to show or dismiss the converter. It stays open while you use other apps or choose an image.
 2. Click the city under the large clock or open **Settings → My local time zone**. Choose a city or **Follow my Mac**. Meridian remembers this and your clock-format preference.
 3. Type a time, drop an image onto the menu bar icon or screenshot area, or paste a copied screenshot with **⌘V**. Click the drop area to open an image file. Text recognition runs on the Mac.
 4. Read the destination date and time at the top. Edit any recognized text in the input box. Use the arrows to review multiple matches and **Copy result** to copy the selected conversion.

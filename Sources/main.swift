@@ -41,12 +41,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         button.addSubview(target)
 
         host = NSHostingController(rootView:Interface(model:model))
-        popover.contentViewController = host; popover.contentSize = NSSize(width:392,height:494)
-        popover.behavior = .transient; popover.animates = false; popover.delegate = self
+        popover.contentViewController = host; popover.contentSize = Interface.size
+        popover.behavior = .applicationDefined; popover.animates = false; popover.delegate = self
         model.chooseFile = { [weak self] in self?.openFile() }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching:.keyDown) { [weak self] e in
             guard let self, self.popover.isShown, self.chooser == nil else { return e }
-            if e.keyCode == 53 { self.popover.performClose(nil); return nil }
             if e.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command, e.charactersIgnoringModifiers?.lowercased() == "v", self.model.page == .converter {
                 if Model.hasImage(.general) || !(self.host.view.window?.firstResponder is NSTextView) {
                     self.model.paste(); return nil
@@ -71,10 +70,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         NSApp.activate(ignoringOtherApps:true)
         host.view.window?.makeKeyAndOrderFront(nil)
     }
-    @objc func toggle() { if popover.isShown { popover.performClose(nil) } else { show() } }
+    @objc func toggle() {
+        if popover.isShown {
+            popover.close()
+            chooser?.cancel(nil)
+        } else {
+            show()
+        }
+    }
+    // AppKit consults this for implicit dismissals. Only the status item calls close() directly.
+    func popoverShouldClose(_ popover: NSPopover) -> Bool { false }
     @objc func settings() { model.page = .settings; show() }
     @objc func quit() { NSApp.terminate(nil) }
     func popoverDidShow(_ notification:Notification) {
+        host.view.window?.hidesOnDeactivate = false
+        host.view.window?.level = .floating
         guard model.page == .converter else { return }
         func find(_ view:NSView) -> NSTextView? {
             if let text = view as? NSTextView { return text }
@@ -84,14 +94,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if let editor = find(host.view) { host.view.window?.makeFirstResponder(editor) }
     }
     private func openFile() {
-        popover.performClose(nil)
+        if let chooser { chooser.makeKeyAndOrderFront(nil); return }
         let panel = NSOpenPanel(); chooser = panel
+        panel.level = .modalPanel
         panel.allowedContentTypes = [.image]; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
         panel.prompt = "Read image"
         NSApp.activate(ignoringOtherApps:true)
         panel.begin { [weak self] response in
             guard let self else { return }
-            self.chooser = nil; self.show()
+            self.chooser = nil
+            if self.popover.isShown { self.host.view.window?.makeKeyAndOrderFront(nil) }
             if response == .OK, let url = panel.url { self.model.read(.file(url), name:url.lastPathComponent) }
         }
     }

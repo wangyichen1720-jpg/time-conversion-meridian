@@ -18,6 +18,7 @@ private struct IconButton: View {
 }
 
 struct Interface: View {
+    static let size = NSSize(width: 476, height: 430)
     @ObservedObject var model: Model
     var body: some View {
         Group {
@@ -27,7 +28,7 @@ struct Interface: View {
             case .source, .destination: ZoneList(model: model).id(model.page == .source)
             }
         }
-        .frame(width: 392, height: 494, alignment: .top)
+        .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
         .background(paper).foregroundStyle(ink).preferredColorScheme(.light)
     }
 
@@ -37,72 +38,90 @@ struct Interface: View {
                 ClockCard(model: model, now: timeline.date)
             }
             ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack {
-                        Text("Convert a time").font(.system(size: 18, weight: .semibold))
-                        Spacer()
-                        if !model.text.isEmpty {
-                            Button("Clear") { model.text = "" }.buttonStyle(.plain).foregroundStyle(muted)
-                        }
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 12) {
+                        textPanel.frame(maxWidth: .infinity)
+                        imagePanel.frame(width: 166)
                     }
-                    TimeEditor(text: $model.text, pasteImage: { model.accept(.general, textAllowed: false) })
-                        .frame(height: model.text.contains("\n") ? 83 : 57)
-                        .background(Color.white.opacity(0.64))
-                        .overlay(alignment: .topLeading) {
-                            if model.text.isEmpty {
-                                Text("e.g. 9:30 AM Tokyo").foregroundStyle(muted.opacity(0.82)).font(.system(size: 15))
-                                    .padding(.leading, 11).padding(.top, 9).allowsHitTesting(false)
-                            }
-                        }
-                        .clipShape(RoundedRectangle(cornerRadius: 7))
-                        .overlay(RoundedRectangle(cornerRadius: 7).stroke(rule, lineWidth: 1))
-                    HStack(spacing: 5) {
-                        Image(systemName: "globe").font(.system(size: 11))
-                        Text("If no zone is given, use")
-                        Button { model.zoneList(destination: false) } label: {
-                            HStack(spacing: 3) { Text(Zones.label(model.fallback)).fontWeight(.semibold); Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)) }
-                        }.buttonStyle(.plain).help("Choose the source time zone")
-                        Spacer()
-                    }.font(.system(size: 11)).foregroundStyle(muted)
-                    if let q = model.report.questions.first {
+                    if let question = model.report.questions.first {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text("Which time zone is “" + q.0 + "”?").fontWeight(.semibold)
-                            ForEach(q.1, id: \.id) { z in
-                                Button(z.label) { model.resolutions[q.0] = z.id }.buttonStyle(.link)
+                            Text("Which time zone is “" + question.0 + "”?").fontWeight(.semibold)
+                            ForEach(question.1, id: \.id) { zone in
+                                Button(zone.label) { model.resolutions[question.0] = zone.id }.buttonStyle(.link)
                             }
                         }.font(.system(size: 12))
                     }
                     ForEach(model.report.messages, id: \.self) { Text($0).font(.system(size: 12)).foregroundStyle(muted) }
-                    if let message = model.message { Text(message).font(.system(size: 12)).foregroundStyle(ink) }
-                    Rectangle().fill(rule).frame(height: 1).padding(.vertical, 1)
-                    HStack(spacing: 10) {
-                        Image(systemName: model.reading ? "text.viewfinder" : "photo.on.rectangle.angled").font(.system(size: 20))
-                            .foregroundStyle(green).frame(width: 32)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(model.reading ? "Reading image…" : "Drop a screenshot").font(.system(size: 13, weight: .semibold))
-                            Text(model.imageName ?? "or click to choose an image").font(.system(size: 11)).foregroundStyle(muted).lineLimit(1)
-                        }
-                        Spacer()
-                        Image(systemName: "arrow.down.to.line").font(.system(size: 12)).foregroundStyle(muted)
-                    }
-                    .padding(.horizontal, 13).frame(height: 54)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.white.opacity(0.33)))
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(rule, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
-                    .overlay(DropArea(model: model))
-                    .accessibilityElement(children: .ignore).accessibilityLabel("Drop a screenshot or choose an image")
-                    .accessibilityAddTraits(.isButton).accessibilityAction { model.chooseFile?() }
-                }.padding(.horizontal, 20).padding(.vertical, 17).frame(maxWidth: .infinity, alignment: .leading)
+                    if let message = model.message { Text(message).font(.system(size: 12)) }
+                }.padding(14)
             }
-            Divider()
-            HStack(spacing: 7) {
-                Button { model.paste() } label: { Label("Paste", systemImage: "doc.on.clipboard") }.buttonStyle(.plain)
-                Text("⌘V").foregroundStyle(muted)
-                Spacer()
-                if let _ = model.current {
-                    Button { model.copyResult() } label: { Label("Copy result", systemImage: "doc.on.doc") }.buttonStyle(.plain)
-                }
-            }.font(.system(size: 11, weight: .medium)).padding(.horizontal, 20).frame(height: 34)
         }
+    }
+
+    private var textPanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Time text").font(.system(size: 16, weight: .semibold))
+                Spacer()
+                if !model.text.isEmpty {
+                    Button("Clear") { model.text = "" }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(muted)
+                }
+            }.frame(height: 23)
+            TimeEditor(text: $model.text, pasteImage: { model.accept(.general, textAllowed: false) })
+                .frame(height: 80)
+                .background(.white)
+                .overlay(alignment: .topLeading) {
+                    if model.text.isEmpty {
+                        Text("e.g. 9:30 AM Tokyo").foregroundStyle(muted).font(.system(size: 14))
+                            .padding(.leading, 11).padding(.top, 9).allowsHitTesting(false)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(rule))
+            Button { model.zoneList(destination: false) } label: {
+                HStack(spacing: 4) {
+                    Text("Default zone").foregroundStyle(muted)
+                    Text(Zones.label(model.fallback)).fontWeight(.semibold).lineLimit(1)
+                    Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold))
+                }
+            }.buttonStyle(.plain).font(.system(size: 11)).frame(height: 22)
+                .help("Source time zone for text without a zone")
+        }
+        .padding(13).background(RoundedRectangle(cornerRadius: 10).fill(.white.opacity(0.78)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(rule))
+    }
+
+    private var imagePanel: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Screenshot").font(.system(size: 16, weight: .semibold)).frame(height: 23)
+            VStack(spacing: 5) {
+                Image(systemName: model.reading ? "text.viewfinder" : "photo.on.rectangle.angled")
+                    .font(.system(size: 20)).accessibilityHidden(true)
+                Text(model.reading ? "Reading image…" : "Drop or choose image")
+                    .font(.system(size: 11, weight: .medium))
+                if let name = model.imageName {
+                    Text(name).font(.system(size: 10)).foregroundStyle(muted).lineLimit(1)
+                }
+            }
+            .foregroundStyle(green).frame(maxWidth: .infinity).frame(height: 80)
+            .background(RoundedRectangle(cornerRadius: 6).fill(.white.opacity(0.52)))
+            .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(green.opacity(0.35), style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
+            .overlay(DropArea(model: model))
+            .accessibilityElement(children: .ignore).accessibilityLabel("Drop a screenshot or choose an image")
+            .accessibilityAddTraits(.isButton).accessibilityAction { model.chooseFile?() }
+            Button { model.paste() } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "doc.on.clipboard")
+                    Text("Paste")
+                    Spacer()
+                    Text("⌘V").foregroundStyle(muted)
+                }.contentShape(Rectangle())
+            }.buttonStyle(.plain).font(.system(size: 11, weight: .medium)).frame(height: 22)
+                .help("Paste a screenshot or time")
+        }
+        .padding(13)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color(red: 0.90, green: 0.93, blue: 0.89)))
+        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(green.opacity(0.20)))
     }
 }
 
@@ -133,14 +152,19 @@ private struct ClockCard: View {
                         Text(Model.format(date, pattern, tz)).font(.system(size: showSeconds ? 40 : 47, weight: .regular, design: .serif)).monospacedDigit()
                         if !model.military { Text(Model.format(date, "a", tz)).font(.system(size: 12, weight: .medium)).foregroundStyle(brass) }
                     }.lineLimit(1).minimumScaleFactor(0.75)
-                    Button { model.zoneList(destination: true) } label: {
-                        HStack(spacing: 5) {
-                            Text(Zones.label(tz.identifier)).font(.system(size: 15, weight: .semibold)).lineLimit(1)
-                            Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
-                        }
-                    }.buttonStyle(.plain).help("Choose your local time zone")
-                    Text(Model.format(date, "EEE, MMM d, yyyy", tz) + "  ·  " + Zones.utcOffset(tz.secondsFromGMT(for: date)))
-                        .font(.system(size: 10)).foregroundStyle(.white.opacity(0.82)).padding(.top, 3)
+                    Text(Model.format(date, "EEEE, MMM d, yyyy", tz))
+                        .font(.system(size: 24, weight: .medium, design: .serif))
+                        .foregroundStyle(.white).lineLimit(1).minimumScaleFactor(0.85)
+                        .accessibilityLabel("Local date, " + Model.format(date, "EEEE, MMMM d, yyyy", tz))
+                    HStack(spacing: 8) {
+                        Button { model.zoneList(destination: true) } label: {
+                            HStack(spacing: 4) {
+                                Text(Zones.label(tz.identifier)).fontWeight(.semibold).lineLimit(1)
+                                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
+                            }
+                        }.buttonStyle(.plain).help("Choose your local time zone")
+                        Text(Zones.utcOffset(tz.secondsFromGMT(for: date))).foregroundStyle(.white.opacity(0.78))
+                    }.font(.system(size: 12)).padding(.top, 5)
                 }
                 Spacer(minLength: 0)
                 Dial(date: date, zone: tz).frame(width: 82, height: 82).accessibilityHidden(true)
@@ -156,6 +180,7 @@ private struct ClockCard: View {
                         Text("\(model.index+1)/\(model.report.times.count)").monospacedDigit().font(.system(size: 10))
                         IconButton(icon: "chevron.right", label: "Next time") { model.index += 1 }.disabled(model.index == model.report.times.count-1)
                     }
+                    IconButton(icon: "doc.on.doc", label: "Copy result") { model.copyResult() }
                 }.frame(height: 26)
             }
         }.foregroundStyle(.white).padding(.horizontal, 20).padding(.top, 11).padding(.bottom, hit == nil ? 16 : 5)
