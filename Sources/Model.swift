@@ -3,20 +3,8 @@ import Combine
 import UniformTypeIdentifiers
 
 final class Model: ObservableObject {
-    enum Page {
-        case converter, settings, destination, source
-        var depth: Int {
-            switch self {
-            case .converter: return 0
-            case .settings: return 1
-            case .destination, .source: return 2
-            }
-        }
-    }
-    private(set) var movingForward = true
-    @Published var page: Page = .converter {
-        willSet { movingForward = newValue.depth >= page.depth }
-    }
+    enum Page { case converter, settings, destination, source }
+    @Published var page: Page = .converter
     var zoneReturn: Page = .converter
     @Published var text = "" { didSet { if !readingResult { invalidateRead() }; recalculate() } }
     @Published var destination: String { didSet { defaults.set(destination, forKey: "destination") } }

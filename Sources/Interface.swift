@@ -41,18 +41,20 @@ struct Interface: View {
     @ObservedObject var model: Model
     var body: some View {
         ZStack(alignment: .top) {
-            Group {
-                switch model.page {
-                case .converter: converter
-                case .settings: SettingsView(model: model)
-                case .source, .destination: ZoneList(model: model, target: model.page == .destination)
+            if model.page == .converter {
+                converter.transition(.move(edge: .leading))
+            } else {
+                ZStack(alignment: .top) {
+                    if model.page == .settings {
+                        SettingsView(model: model).transition(.move(edge: .leading))
+                    } else {
+                        ZoneList(model: model, target: model.page == .destination)
+                            .transition(.move(edge: .trailing))
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .transition(.move(edge: .trailing))
             }
-            .id(model.page)
-            .transition(.asymmetric(
-                insertion: .offset(x: model.movingForward ? 36 : -36).combined(with: .opacity),
-                removal: .opacity
-            ))
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: model.page)
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
@@ -85,6 +87,7 @@ struct Interface: View {
                     if let message = model.message { Text(message).font(.system(size: 12)) }
                 }.padding(14)
             }
+            QuitFooter()
         }
     }
 
@@ -218,7 +221,9 @@ private struct ClockCard: View {
                         TimeReadout(title: "Local clock", instant: now, zone: target,
                                     zoneName: Zones.label(target.identifier), military: model.military, seconds: false,
                                     chooseZone: { model.zoneList(destination: true) })
-                        Dial(date: now, zone: target).frame(width: 82, height: 82).accessibilityHidden(true)
+                        TimelineView(.periodic(from: .now, by: 1)) { tick in
+                            Dial(date: tick.date, zone: target)
+                        }.frame(width: 82, height: 82).accessibilityHidden(true)
                     }
                 }
             }
@@ -298,8 +303,22 @@ private struct Dial: View {
             let m = Double(parts.minute!) + Double(parts.second!)/60, h = Double(parts.hour! % 12) + m/60
             line(c, point(h/12,r*0.46), .white, small ? 1.4 : 2.8)
             line(c, point(m/60,r*0.71), brass, small ? 1 : 1.8)
+            let secondTurn = Double(parts.second!) / 60
+            line(point(secondTurn, -r * 0.16), point(secondTurn, r * 0.86), .orange, small ? 0.9 : 1.4)
             let hub = small ? 1.0 : 2.6
             ctx.fill(Path(ellipseIn:CGRect(x:c.x-hub,y:c.y-hub,width:hub*2,height:hub*2)), with:.color(brass))
+        }
+    }
+}
+
+private struct QuitFooter: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button("Quit Meridian") { NSApp.terminate(nil) }
+                .buttonStyle(.plain).foregroundStyle(muted)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20).padding(.vertical, 8)
         }
     }
 }
@@ -327,9 +346,7 @@ private struct SettingsView: View {
                     }
                 }
             }.formStyle(.grouped)
-            Divider()
-            Button("Quit Meridian") { NSApp.terminate(nil) }.buttonStyle(.plain).foregroundStyle(muted)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal,20).padding(.vertical,10)
+            QuitFooter()
         }
     }
     func setting(_ title: String, _ value: String, action: @escaping () -> Void) -> some View {
