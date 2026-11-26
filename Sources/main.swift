@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         installMenus()
+        // Give new installs room near the system clock. AppKit's saved user placement takes precedence.
+        UserDefaults.standard.register(defaults: ["NSStatusItem Preferred Position MeridianClock": 160.0])
         status = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         guard let button = status.button else { return }
         status.autosaveName = "MeridianClock"
@@ -114,9 +116,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         if let region = screen?.auxiliaryTopRightArea {
             // A hidden status window can have stale geometry until it fits beside the notch.
             // Start with a compact face even before Control Center supplies a usable frame.
-            width = min(width, 78)
             if let frame = button.window?.frame, frame.maxX > region.minX, frame.maxX <= region.maxX {
-                width = min(width, max(MenuClockFace.iconWidth, floor(frame.maxX - region.minX) - 22))
+                width = min(width, max(MenuClockFace.iconWidth, floor(frame.maxX - region.minX) - 38))
+            } else {
+                width = min(width, 78)
             }
         }
         if refresh || button.image?.size.width != width {
