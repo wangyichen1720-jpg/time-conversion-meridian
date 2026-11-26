@@ -49,10 +49,14 @@ struct Interface: View {
                 }
             }
             .id(model.page)
-            .transition(.opacity)
+            .transition(.asymmetric(
+                insertion: .offset(x: model.movingForward ? 36 : -36).combined(with: .opacity),
+                removal: .opacity
+            ))
         }
-        .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: model.page)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: model.page)
         .frame(width: Self.size.width, height: Self.size.height, alignment: .top)
+        .clipped()
         .background {
             if reduceTransparency { Color(nsColor: .windowBackgroundColor) }
         }
@@ -133,8 +137,7 @@ struct Interface: View {
             .background(RoundedRectangle(cornerRadius: 6).fill(field))
             .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.secondary, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
             .overlay(DropArea(model: model))
-            .accessibilityElement(children: .ignore).accessibilityLabel("Drop a screenshot or choose an image")
-            .accessibilityAddTraits(.isButton).accessibilityAction { model.chooseFile?() }
+            
             Button { model.paste() } label: {
                 HStack(spacing: 5) {
                     Image(systemName: "doc.on.clipboard")

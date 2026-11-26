@@ -194,7 +194,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
     @objc func toggle() {
         if popover.isShown {
             popover.close()
-            chooser?.cancel(nil)
+            let activeChooser = chooser
+            chooser = nil
+            activeChooser?.cancel(nil)
         } else {
             show()
         }
@@ -221,14 +223,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSPopoverDelegate {
         let panel = NSOpenPanel(); chooser = panel
         panel.level = .modalPanel
         panel.allowedContentTypes = [.image]; panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-        panel.prompt = "Read image"
+        panel.title = "Choose an Image"
+        panel.prompt = "Open"
+        panel.canChooseFiles = true
         NSApp.activate(ignoringOtherApps:true)
         panel.begin { [weak self] response in
-            guard let self else { return }
+            guard let self, self.chooser === panel else { return }
             self.chooser = nil
-            if self.popover.isShown { self.host.view.window?.makeKeyAndOrderFront(nil) }
+            self.show()
             if response == .OK, let url = panel.url { self.model.read(.file(url), name:url.lastPathComponent) }
         }
+        panel.makeKeyAndOrderFront(nil)
     }
     private func addAppCommands(to menu: NSMenu) {
         menu.addItem(withTitle: "Settings…", action: #selector(settings), keyEquivalent: ",").target = self

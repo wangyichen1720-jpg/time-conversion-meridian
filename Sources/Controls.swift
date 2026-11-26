@@ -80,6 +80,12 @@ class DropTarget: NSView {
     override func accessibilityPerformPress() -> Bool { clicked?(); return true }
 }
 
+private final class ChooseImageButton: NSButton {
+    var choose: (() -> Void)?
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    @objc func openChooser() { choose?() }
+}
+
 struct DropArea: NSViewRepresentable {
     let model: Model
     func makeNSView(context: Context) -> DropTarget {
@@ -88,9 +94,20 @@ struct DropArea: NSViewRepresentable {
         target.hoverChanged = { [weak target] inside in
             target?.layer?.backgroundColor = inside ? NSColor.systemGreen.withAlphaComponent(0.16).cgColor : nil
         }
-        target.clicked = { model.chooseFile?() }
+        let button = ChooseImageButton(frame: target.bounds)
+        button.title = ""
+        button.isTransparent = true
+        button.autoresizingMask = [.width, .height]
+        button.setAccessibilityLabel("Drop a screenshot or choose an image")
+        button.choose = { model.chooseFile?() }
+        button.target = button
+        button.action = #selector(ChooseImageButton.openChooser)
+        target.addSubview(button)
         target.receive = { model.accept($0) }
         return target
+    }
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: DropTarget, context: Context) -> CGSize? {
+        proposal.replacingUnspecifiedDimensions()
     }
     func updateNSView(_ nsView:DropTarget, context:Context) {}
 }
